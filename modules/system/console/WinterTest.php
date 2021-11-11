@@ -11,7 +11,8 @@ use Winter\Storm\Exception\ApplicationException;
 /**
  * Console command to run tests for plugins or the Winter CMS core.
  *
- * If a plugin is provided, this command will search for a `phpunit.xml` file inside the plugin's directory and run its tests.
+ * If a plugin is provided, this command will search for a `phpunit.xml` file inside the plugin's directory and run its
+ * tests.
  *
  * @package winter\wn-system-module
  */
@@ -25,12 +26,15 @@ class WinterTest extends Command
     /**
      * @var string The console command signature as ignoreValidationErrors causes options not to be registered.
      */
-    protected $signature = 'winter:test {?--p|plugin=} {?--c|configuration=} {?--o|core}';
+    protected $signature = 'winter:test
+        {--p|plugin=* : The plugin(s) that you wish to test. You must specify the plugin by its code: eg. Author.Plugin}
+        {--c|configuration= : Use a custom configuration file and runs tests that are specified in that configuration.}
+        {--o|core : Only run the Winter CMS core unit tests.}';
 
     /**
      * @var string The console command description.
      */
-    protected $description = 'Run tests for the Winter CMS core or an existing plugin.';
+    protected $description = 'Run tests for the Winter CMS core or existing plugins.';
 
     /**
      * @var ?string Path to phpunit binary
@@ -71,23 +75,34 @@ class WinterTest extends Command
 
         if ($this->option('core')) {
             if (!$configs['core']) {
-                throw new ApplicationException("Unable to find the core's phpunit.xml file. Try downloading it from GitHub.");
+                throw new ApplicationException(
+                    'Unable to find the Winter CMS core\'s "phpunit.xml" file. Try downloading it from GitHub.'
+                );
             }
-            $this->info('Running tests for: Winter CMS core');
+            $this->info('Running tests for Winter CMS core');
+            $this->line('');
 
             return $this->execPhpUnit($configs['core'], $arguments);
         }
 
-        if ($plugin = $this->option('plugin')) {
-            if (!isset($configs['plugins'][strtolower($plugin)])) {
-                throw new ApplicationException(sprintf("Unable to find %s\'s phpunit.xml file", $plugin));
-            }
-            $this->info('Running tests for plugin: ' . PluginManager::instance()->normalizeIdentifier($plugin));
-
-            return $this->execPhpUnit($configs['plugins'][strtolower($plugin)], $arguments);
-        }
-
         $exitCode = 0;
+
+        if (count($this->option('plugin'))) {
+            foreach ($this->option('plugin') as $plugin) {
+                if (!isset($configs['plugins'][strtolower($plugin)])) {
+                    throw new ApplicationException(
+                        sprintf('Unable to find a "phpunit.xml" file for plugin "%s".', $plugin)
+                    );
+                }
+                $this->info('Running tests for plugin: ' . PluginManager::instance()->normalizeIdentifier($plugin));
+                $this->line('');
+
+                $exit = $this->execPhpUnit($configs['plugins'][strtolower($plugin)], $arguments);
+                $exitCode = $exitCode === 0 ? $exit : $exitCode;
+            }
+
+            return $exitCode;
+        }
 
         foreach (['core', 'plugins'] as $type) {
             if (is_array($configs[$type])) {
@@ -99,24 +114,13 @@ class WinterTest extends Command
                 continue;
             }
 
-            $this->info('Running tests for Winter CMS: ' . $type);
+            $this->info('Running tests for Winter CMS ' . $type);
+            $this->line('');
             $exit = $this->execPhpUnit($configs[$type], $arguments);
             $exitCode = $exitCode === 0 ? $exit : $exitCode;
         }
 
         return $exitCode;
-    }
-
-    /**
-     * Get the console command options.
-     */
-    protected function getOptions(): array
-    {
-        return [
-            ['plugin', 'p', InputOption::VALUE_OPTIONAL, 'The name of the plugin. Ex: AuthorName.PluginName', null],
-            ['configuration', 'c', InputOption::VALUE_OPTIONAL, 'The path to a PHPUnit XML config file', null],
-            ['core', 'o', InputOption::VALUE_NONE, 'Run the Winter CMS core tests'],
-        ];
     }
 
     /**
@@ -218,6 +222,7 @@ class WinterTest extends Command
 
         // Get the arguments provided by this command
         foreach ($this->getOptions() as $argument) {
+            print_r($argument);
             // For position 0 & 1, pass their names with appropriate dashes
             for ($i = 0; $i < 2; $i++) {
                 $arguments = $this->removeArgument($arguments, str_repeat('-', 2 - $i) . $argument[$i]);
